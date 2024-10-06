@@ -17,7 +17,7 @@ class MultiAgentSpaceShooterEnv(gym.Env):
         }
         self.hyperparams = hyperparams if hyperparams else {
             'agent_speed': 0.1,
-            'enemy_speed': 0.01
+            'enemy_speed': 0.01,
         }
 
         # Calculate the correct observation space shape
@@ -36,11 +36,11 @@ class MultiAgentSpaceShooterEnv(gym.Env):
 
         # Pygame setup
         pygame.init()
-        self.screen_width = 800  # Increased playground size
-        self.screen_height = 600  # Increased playground size
-        self.agent_size = 30  # Decreased agent size
-        self.enemy_size = 30  # Decreased enemy size
-        self.bullet_size = 5  # Size of bullets
+        self.screen_width = 800
+        self.screen_height = 600
+        self.agent_size = 30
+        self.enemy_size = 30
+        self.bullet_size = 5
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont(None, 36)
@@ -68,7 +68,7 @@ class MultiAgentSpaceShooterEnv(gym.Env):
             elif action == 2:  # Move right
                 self.bot_positions[i] = min(1, self.bot_positions[i] + agent_speed)
             elif action == 3:  # Shoot
-                self.bullets.append([self.bot_positions[i], 1.0])  # Add bullet at agent's position
+                self.bullets.append([self.bot_positions[i], 1.0, i])  # Add bullet at agent's position with agent index
 
         # Move bullets upwards
         new_bullets = []
@@ -82,8 +82,8 @@ class MultiAgentSpaceShooterEnv(gym.Env):
         for bullet in self.bullets:
             for j, (enemy_x, enemy_y) in enumerate(zip(self.enemy_positions, self.enemy_y_positions)):
                 if abs(bullet[0] - enemy_x) < 0.05 and abs(bullet[1] - enemy_y) < 0.05:
-                    rewards += self.reward_params['hit_reward']  # Hit enemy
-                    self.scores += 1  # Increase score
+                    rewards[bullet[2]] += self.reward_params['hit_reward']  # Hit enemy, reward specific agent
+                    self.scores[bullet[2]] += 1  # Increase score for specific agent
                     self.enemy_respawn_times[j] = 50  # Set respawn time
                     self.enemy_positions[j] = np.random.uniform(0, 1)  # Respawn enemy
                     self.enemy_y_positions[j] = 0  # Reset Y position
@@ -113,7 +113,6 @@ class MultiAgentSpaceShooterEnv(gym.Env):
         if np.any(self.healths <= 0):
             done = True
 
-        # Sum the rewards to return a single scalar reward
         total_reward = np.sum(rewards)
 
         return self._get_obs(), total_reward, done, {}
