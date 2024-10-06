@@ -3,84 +3,118 @@ from gym import spaces
 import numpy as np
 import pygame
 
-class SpaceShooterEnv(gym.Env):
-    def __init__(self):
-        super(SpaceShooterEnv, self).__init__()
-        self.action_space = spaces.Discrete(4)  # 0: stay, 1: left, 2: right, 3: shoot
-        self.observation_space = spaces.Box(low=0, high=1, shape=(4,), dtype=np.float32)
+class MultiAgentSpaceShooterEnv(gym.Env):
+    def __init__(self, num_agents=3, num_enemies=5, max_fps=30, reward_params=None):
+        super(MultiAgentSpaceShooterEnv, self).__init__()
+        self.num_agents = num_agents
+        self.num_enemies = num_enemies
+        self.max_fps = max_fps
+        self.reward_params = reward_params if reward_params else {
+            'hit_reward': 10,
+            'miss_penalty': -1,
+            'survival_bonus': 1,
+            'enemy_pass_penalty': -5,
+            'health_loss': 0.1
+        }
+
+        # Calculate the correct observation space shape
+        obs_shape = (self.num_agents + self.num_enemies + self.num_agents + self.num_agents,)
+        self.action_space = spaces.MultiDiscrete([4] * self.num_agents)  # 0: stay, 1: left, 2: right, 3: shoot
+        self.observation_space = spaces.Box(low=0, high=1, shape=obs_shape, dtype=np.float32)
 
         # Game variables
-        self.bot_position = 0.5  
-        self.enemy_position = np.random.uniform(0, 1)
-        self.health = 1.0
-        self.score = 0
-        
+        self.bot_positions = np.full(self.num_agents, 0.5)
+        self.enemy_positions = np.random.uniform(0, 1, self.num_enemies)
+        self.healths = np.ones(self.num_agents)
+        self.scores = np.zeros(self.num_agents)
+        self.enemy_respawn_times = np.zeros(self.num_enemies)
+
         # Pygame setup
         pygame.init()
-        self.screen_width = 600
-        self.screen_height = 400
+        self.screen_width = 800  # Increased playground size
+        self.screen_height = 600  # Increased playground size
+        self.agent_size = 30  # Decreased agent size
+        self.enemy_size = 30  # Decreased enemy size
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont(None, 36)
 
-        # Set maximum FPS
-        self.max_fps = 60
-
     def reset(self):
-        self.bot_position = 0.5
-        self.enemy_position = np.random.uniform(0, 1)
-        self.health = 1.0
-        self.score = 0
-        return np.array([self.bot_position, self.enemy_position, self.health, self.score])
+        self.bot_positions = np.full(self.num_agents, 0.5)
+        self.enemy_positions = np.random.uniform(0, 1, self.num_enemies)
+        self.healths = np.ones(self.num_agents)
+        self.scores = np.zeros(self.num_agents)
+        self.enemy_respawn_times = np.zeros(self.num_enemies)
+        return self._get_obs()
 
-    def step(self, action):
+    def step(self, actions):
+        rewards = np.zeros(self.num_agents)
         done = False
-        reward = 0
 
-        if action == 1:  # Move left
-            self.bot_position = max(0, self.bot_position - 0.1)
-        elif action == 2:  # Move right
-            self.bot_position = min(1, self.bot_position + 0.1)
-        elif action == 3:  # Shoot
-            if abs(self.bot_position - self.enemy_position) < 0.1:
-                reward = 10  # Hit enemy
-                self.enemy_position = np.random.uniform(0, 1)  # Respawn enemy
+        for i, action in enumerate(actions):
+            if action == 1:  # Move left
+                self.bot_positions[i] = max(0, self.bot_positions[i] - 0.1)
+            elif action == 2:  # Move right
+                self.bot_positions[i] = min(1, self.bot_positions[i] + 0.1)
+            elif action == 3:  # Shoot
+                for j, enemy_pos in enumerate(self.enemy_positions):
+                    if abs(self.bot_positions[i] - (enemy_pos + np.random.uniform(-0.05, 0.05))) < 0.1:
+                        rewards[i] += self.reward_params['hit_reward']  # Hit enemy
+                        self.scores[i] += 1  # Increase score
+                        self.enemy_respawn_times[j] = 50  # Set respawn time
+                        break
+                else:
+                    rewards[i] += self.reward_params['miss_penalty']  # Penalize for missed shot
 
-        # Penalize for missed shot
-        if action == 3 and abs(self.bot_position - self.enemy_position) >= 0.1:
-            reward -= 1
+        # Enemy moves toward the bots
+        self.enemy_positions -= 0.05
+        for j, enemy_pos in enumerate(self.enemy_positions):
+            if enemy_pos < 0:
+                for i in range(self.num_agents):
+                    self.healths[i] -= self.reward_params['health_loss']  # Lose health if enemy reaches the player
+                    rewards[i] += self.reward_params['enemy_pass_penalty']  # Penalize when enemy passes
+                self.enemy_positions[j] = np.random.uniform(0, 1)  # Respawn enemy
 
-        # Enemy moves toward the bot
-        self.enemy_position -= 0.05
-        if self.enemy_position < 0:
-            self.health -= 0.1  # Lose health if enemy reaches the player
-            self.enemy_position = np.random.uniform(0, 1)  # Respawn enemy
-            reward -= 5  # Penalize when enemy passes
+        # Handle enemy respawn
+        for j in range(self.num_enemies):
+            if self.enemy_respawn_times[j] > 0:
+                self.enemy_respawn_times[j] -= 1
+                if self.enemy_respawn_times[j] == 0:
+                    self.enemy_positions[j] = np.random.uniform(0, 1)  # Respawn enemy
 
-        reward += 1  # Bonus for surviving
+        rewards += self.reward_params['survival_bonus']  # Bonus for surviving
 
-        if self.health <= 0:
+        if np.any(self.healths <= 0):
             done = True
 
-        return np.array([self.bot_position, self.enemy_position, self.health, self.score]), reward, done, {}
+        # Sum the rewards to return a single scalar reward
+        total_reward = np.sum(rewards)
+
+        return self._get_obs(), total_reward, done, {}
+
+    def _get_obs(self):
+        return np.concatenate([self.bot_positions, self.enemy_positions, self.healths, self.scores])
 
     def render(self, mode='human'):
         # Fill the background
         self.screen.fill((0, 0, 0))
 
-        # Render the bot (player) as a rectangle
-        bot_x = int(self.bot_position * self.screen_width)
-        pygame.draw.rect(self.screen, (0, 255, 0), pygame.Rect(bot_x, self.screen_height - 50, 50, 50))
+        # Render the bots (players) as rectangles
+        for bot_pos in self.bot_positions:
+            bot_x = int(bot_pos * self.screen_width)
+            pygame.draw.rect(self.screen, (0, 255, 0), pygame.Rect(bot_x, self.screen_height - self.agent_size, self.agent_size, self.agent_size))
 
-        # Render the enemy as a rectangle
-        enemy_x = int(self.enemy_position * self.screen_width)
-        pygame.draw.rect(self.screen, (255, 0, 0), pygame.Rect(enemy_x, 50, 50, 50))
+        # Render the enemies as rectangles
+        for enemy_pos in self.enemy_positions:
+            enemy_x = int(enemy_pos * self.screen_width)
+            pygame.draw.rect(self.screen, (255, 0, 0), pygame.Rect(enemy_x, self.enemy_size, self.enemy_size, self.enemy_size))
 
-        # Display health and score
-        health_text = self.font.render(f'Health: {int(self.health * 100)}%', True, (255, 255, 255))
-        score_text = self.font.render(f'Score: {self.score}', True, (255, 255, 255))
-        self.screen.blit(health_text, (10, 10))
-        self.screen.blit(score_text, (10, 50))
+        # Display health and score for each agent
+        for i in range(self.num_agents):
+            health_text = self.font.render(f'Agent {i+1} Health: {int(self.healths[i] * 100)}%', True, (255, 255, 255))
+            score_text = self.font.render(f'Agent {i+1} Score: {int(self.scores[i])}', True, (255, 255, 255))
+            self.screen.blit(health_text, (10, 10 + i * 40))
+            self.screen.blit(score_text, (10, 30 + i * 40))
 
         # Update the screen
         pygame.display.flip()
