@@ -3,21 +3,20 @@ import gym
 import torch as th
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
-from env import MultiAgentSpaceShooterEnv  # Import the new multi-agent environment
+from env import MultiAgentSpaceShooterEnv
 
-# Learning rate schedule function
+
 def lr_schedule(progress_remaining):
     return 1e-4 * progress_remaining
 
-# Create environment with desired parameters
 num_agents = 3
 num_enemies = 5
 reward_params = {
-    'hit_reward': 10,
-    'miss_penalty': -0.5,
-    'survival_bonus': 2,
-    'enemy_pass_penalty': -2,
-    'health_loss': 0.01
+    'hit_reward': 5, # reward given to an agent when it successfully hits an enemy.
+    'miss_penalty': -1,  # penalty applied when an agent shoots but misses the enemy.
+    'survival_bonus': 0,  #  reward given to an agent for surviving each step in the environment.
+    'enemy_pass_penalty': -2, # penalty applied when an enemy reaches the bottom of the screen, indicating it has passed the agents.
+    'health_loss': 1  # amount of health lost by each agent when an enemy reaches the bottom of the screen.
 }
 env = DummyVecEnv([lambda: MultiAgentSpaceShooterEnv(num_agents=num_agents, num_enemies=num_enemies, reward_params=reward_params)])
 
