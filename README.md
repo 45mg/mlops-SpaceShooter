@@ -1,5 +1,5 @@
 # SpaceShooter
-MLOPS multiagent space shooter game
+A Basic space shooter environment simulated using pygame and trained with a chosen RL policy.
 
 - **Conda Environment**: Skip the first two lines if you have already installed conda.
 
