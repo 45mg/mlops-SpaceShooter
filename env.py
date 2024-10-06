@@ -20,12 +20,10 @@ class MultiAgentSpaceShooterEnv(gym.Env):
             'enemy_speed': 0.01
         }
 
-        # Calculate the correct observation space shape
         obs_shape = (self.num_agents + self.num_enemies + self.num_enemies + self.num_agents + self.num_agents,)
         self.action_space = spaces.MultiDiscrete([4] * self.num_agents)  # 0: stay, 1: left, 2: right, 3: shoot
         self.observation_space = spaces.Box(low=0, high=1, shape=obs_shape, dtype=np.float32)
 
-        # Game variables
         self.bot_positions = np.full(self.num_agents, 0.5)
         self.enemy_positions = np.random.uniform(0, 1, self.num_enemies)
         self.enemy_y_positions = np.zeros(self.num_enemies)  # Y positions of enemies
@@ -34,13 +32,12 @@ class MultiAgentSpaceShooterEnv(gym.Env):
         self.enemy_respawn_times = np.zeros(self.num_enemies)
         self.bullets = []  # List to track bullets
 
-        # Pygame setup
         pygame.init()
-        self.screen_width = 800  # Increased playground size
-        self.screen_height = 600  # Increased playground size
-        self.agent_size = 30  # Decreased agent size
-        self.enemy_size = 30  # Decreased enemy size
-        self.bullet_size = 5  # Size of bullets
+        self.screen_width = 800
+        self.screen_height = 60
+        self.agent_size = 30
+        self.enemy_size = 30
+        self.bullet_size = 5
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont(None, 36)
@@ -48,11 +45,11 @@ class MultiAgentSpaceShooterEnv(gym.Env):
     def reset(self):
         self.bot_positions = np.full(self.num_agents, 0.5)
         self.enemy_positions = np.random.uniform(0, 1, self.num_enemies)
-        self.enemy_y_positions = np.zeros(self.num_enemies)  # Reset Y positions of enemies
+        self.enemy_y_positions = np.zeros(self.num_enemies)
         self.healths = np.ones(self.num_agents)
         self.scores = np.zeros(self.num_agents)
         self.enemy_respawn_times = np.zeros(self.num_enemies)
-        self.bullets = []  # Reset bullets
+        self.bullets = []
         return self._get_obs()
 
     def step(self, actions):
@@ -70,7 +67,6 @@ class MultiAgentSpaceShooterEnv(gym.Env):
             elif action == 3:  # Shoot
                 self.bullets.append([self.bot_positions[i], 1.0])  # Add bullet at agent's position
 
-        # Move bullets upwards
         new_bullets = []
         for bullet in self.bullets:
             bullet[1] -= 0.1  # Move bullet up
@@ -91,14 +87,14 @@ class MultiAgentSpaceShooterEnv(gym.Env):
                     break
 
         # Enemy moves toward the bots
-        self.enemy_y_positions += enemy_speed  # Move enemies downwards based on hyperparameter
+        self.enemy_y_positions += enemy_speed
         for j, (enemy_x, enemy_y) in enumerate(zip(self.enemy_positions, self.enemy_y_positions)):
             if enemy_y >= 1:
                 for i in range(self.num_agents):
                     self.healths[i] -= self.reward_params['health_loss']  # Lose health if enemy reaches the player
                     rewards[i] += self.reward_params['enemy_pass_penalty']  # Penalize when enemy passes
                 self.enemy_positions[j] = np.random.uniform(0, 1)  # Respawn enemy
-                self.enemy_y_positions[j] = 0  # Reset Y position
+                self.enemy_y_positions[j] = 0
 
         # Handle enemy respawn
         for j in range(self.num_enemies):
@@ -106,14 +102,13 @@ class MultiAgentSpaceShooterEnv(gym.Env):
                 self.enemy_respawn_times[j] -= 1
                 if self.enemy_respawn_times[j] == 0:
                     self.enemy_positions[j] = np.random.uniform(0, 1)  # Respawn enemy
-                    self.enemy_y_positions[j] = 0  # Reset Y position
+                    self.enemy_y_positions[j] = 0
 
         rewards += self.reward_params['survival_bonus']  # Bonus for surviving
 
         if np.any(self.healths <= 0):
             done = True
 
-        # Sum the rewards to return a single scalar reward
         total_reward = np.sum(rewards)
 
         return self._get_obs(), total_reward, done, {}
@@ -122,7 +117,6 @@ class MultiAgentSpaceShooterEnv(gym.Env):
         return np.concatenate([self.bot_positions, self.enemy_positions, self.enemy_y_positions, self.healths, self.scores])
 
     def render(self, mode='human'):
-        # Fill the background
         self.screen.fill((0, 0, 0))
 
         # Render the bots (players) as rectangles
@@ -149,7 +143,6 @@ class MultiAgentSpaceShooterEnv(gym.Env):
             self.screen.blit(health_text, (10, 10 + i * 40))
             self.screen.blit(score_text, (10, 30 + i * 40))
 
-        # Update the screen
         pygame.display.flip()
         self.clock.tick(self.max_fps)  # Limit to max FPS
 
