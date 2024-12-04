@@ -13,9 +13,10 @@ bash ./Anaconda3-2024.02-1-Linux-x86_64.sh
 # Create new environment named 'mlops' with necessary specifications
 conda create -n mlops python=3.8
 conda activate mlops
-conda install pytorch orchvision torchaudio cudatoolkit
+conda install pytorch torchvision torchaudio cudatoolkit
 conda install -c conda-forge gym=0.21.0 opencv=4.5.5
-pip install stable-baselines3==1.5.0 pygame
+pip install stable-baselines3==1.5.0 
+pip install pygame
 ```
 <br>
 
